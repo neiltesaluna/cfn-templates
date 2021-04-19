@@ -1,19 +1,30 @@
 AWSTemplateFormatVersion: "2010-09-09"
+Description: This stack utilizes ECS to create Containers pulled from ECR, fronted with an ALB and is managed by Fargate
 Parameters:
-  SubnetID:
+  SubnetID1:
     Type: String
     Default: subnet-dcf524ba
+  SubnetID2:
+    Type: String
+    Default: subnet-a66aa9ee
+  VpcID:
+    Type: String
+    Default: vpc-25c32a43
   FrontEndImage:
     Type: String
+    Default: 700813804794.dkr.ecr.ap-southeast-2.amazonaws.com/flask-front-end:latest 
+
 Resources:
   Cluster:
     Type: AWS::ECS::Cluster
     Properties:
       ClusterName: !Sub ${AWS::StackName}-cluster
+
   LogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub ${AWS::StackName}-log-group
+
   ExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -26,20 +37,40 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
   ContainerSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupName: !Sub ${AWS::StackName}-ContainerSecurityGroup
-      GroupDescription: Security group for NGINX container
+      GroupDescription: Security group for container
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5000
+          ToPort: 5000
+          CidrIp: 0.0.0.0/0
+
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub ${AWS::StackName}-alb-sg
+      GroupDescription: Security group for load balancer
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 80
           CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 5000
-          ToPort: 5000
-          CidrIp: 0.0.0.0/0
+
+  FrontEndLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties: 
+      Name: !Sub ${AWS::StackName}-alb
+      SecurityGroups: 
+        - !GetAtt LoadBalancerSecurityGroup.GroupId
+      Subnets: 
+        - !Ref SubnetID1
+        - !Ref SubnetID2
+      Type: application
+
   TaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
@@ -49,7 +80,7 @@ Resources:
       NetworkMode: awsvpc
       ExecutionRoleArn: !Ref ExecutionRole
       ContainerDefinitions:
-        - Name: fontend-container
+        - Name: !Sub ${AWS::StackName}-fontend-container
           Image: !Ref FrontEndImage
           PortMappings:
             - ContainerPort: 5000
@@ -67,18 +98,70 @@ Resources:
       RequiresCompatibilities:
         - EC2
         - FARGATE
-  Service:
+
+  FrontEndService:
     Type: AWS::ECS::Service
+    DependsOn: FrontEndListenerRule
     Properties:
       ServiceName: !Sub ${AWS::StackName}-service
       Cluster: !Ref Cluster
       TaskDefinition: !Ref TaskDefinition
-      DesiredCount: 1
+      DesiredCount: 2
       LaunchType: FARGATE
       NetworkConfiguration:
         AwsvpcConfiguration:
           AssignPublicIp: ENABLED
           Subnets:
-            - !Ref SubnetID
+            - !Ref SubnetID1
+            - !Ref SubnetID2
           SecurityGroups:
             - !GetAtt ContainerSecurityGroup.GroupId
+      LoadBalancers:
+        - ContainerName: !Sub ${AWS::StackName}-fontend-container
+          ContainerPort: 5000
+          TargetGroupArn: !Ref FrontEndTargetGroup
+
+  FrontEndTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub ${AWS::StackName}-frontend-tg
+      Port: 80
+      Protocol: HTTP
+      Matcher:
+        HttpCode: 200-299
+      HealthCheckIntervalSeconds: 10
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 10
+      TargetType: ip
+      VpcId: !Ref VpcID
+    
+  FrontEndLoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref FrontEndLoadBalancer
+      Protocol: HTTP
+      Port: 80
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref FrontEndTargetGroup
+
+  FrontEndListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref FrontEndLoadBalancerListener
+      Priority: 1
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - /
+      Actions:
+        - TargetGroupArn: !Ref FrontEndTargetGroup
+          Type: forward
+
+Outputs:
+  FrontEndURL:
+    Description: URL for the frontend flask application
+    Value: !Join ['', ['http://', !GetAtt FrontEndLoadBalancer.DNSName, '/']]
+    Export:
+      Name: !Sub '${AWS::StackName}-FrontEndURL'
