@@ -1,0 +1,87 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "This cloudformation stack is to generate a S3 bucket and a lambda function"
+Resources:
+
+  awsLambdaAccessRole:
+    Type: AWS::IAM::Role
+    Properties: 
+      RoleName: !Sub "${AWS::StackName}-log-role"
+      Description: "Required IAM role for cfn lambda function"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
+      Policies:  
+        - PolicyName: AWSLambdaBasicExecutionRole
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-Lambda:*"
+        - PolicyName: AWSS3ReadOnly
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: !Sub "arn:aws:s3:::${AWS::StackName}-cfn-bucket/*"
+  CWLogGroup: 
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-Lambda"
+      RetentionInDays: 3
+
+  lambdaS3Permission:
+    Type: AWS::Lambda::Permission
+    Properties: 
+      FunctionName: !GetAtt cfnAwsLambda.Arn
+      Principal: s3.amazonaws.com
+      Action: lambda:InvokeFunction
+
+  cfnS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${AWS::StackName}-cfn-bucket"
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt cfnAwsLambda.Arn
+
+# Lambda function that prints json data when a file is uploaded to the created s3 bucket
+  cfnAwsLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-Lambda"
+      Runtime: python3.9
+      Role: !GetAtt awsLambdaAccessRole.Arn 
+      Handler: index.lambda_handler
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+
+          s3 = boto3.client('s3')
+
+          def lambda_handler(event, context):
+              # Get the object from the event and show its content type
+              bucket = event['Records'][0]['s3']['bucket']['name']
+              key = event['Records'][0]['s3']['object']['key']
+
+              try:
+                  response = s3.get_object(Bucket=bucket, Key=key)
+                  print(f'Successfully loaded Bucket:{bucket} and File:{key}.')
+                  data = json.loads(response['Body'].read().decode('utf-8'))
+                  print(data)
+
+              except Exception as e:
+                  print(e)
+                  print('Error getting object {} from bucket {}. Make sure they exist and your bucket is in the same region as this function.'.format(key, bucket))
+                  raise e
