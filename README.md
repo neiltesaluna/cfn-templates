@@ -5,6 +5,7 @@ These template snippets are also a showcase on some of the things I've played ar
 
 ### Deploying the templates using AWS CLI
 To deploy these templates using AWS CLI we need to run the following command in our terminal:
+
 `aws cloudformation deploy --template-file s3-lambda-cfn.yml --stack-name s3-lambda-stack --capabilities CAPABILITY_NAMED_IAM`
 
 `--template-file (string)`: *The  path where your AWS CloudFormation template is located.*
