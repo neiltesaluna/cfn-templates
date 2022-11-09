@@ -1,0 +1,40 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "This stack creates a S3 bucket that allows Lambda invocation"
+
+Resources:
+  s3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${AWS::StackName}-cfn-bucket"
+
+  S3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref s3Bucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            AWS: '*'
+          Action: "*"
+          Resource:
+          - !GetAtt s3Bucket.Arn
+          - !Join ['', [!GetAtt s3Bucket.Arn, '/*']]
+          Condition:
+            StringEquals:
+              s3:DataAccessPointAccount: !Sub ${AWS::AccountId}
+
+  s3BucketAccessPoint:
+    Type: AWS::S3::AccessPoint
+    Properties: 
+      Bucket: !Ref s3Bucket
+      Name: !Sub "${AWS::StackName}-cfn-s3-access-point"
+  
+Outputs:
+  s3BucketArn:
+    Description: The Bucket ARN generated from the stack
+    Value: !GetAtt s3Bucket.Arn
+  accessPointArn:
+    Description: The access point ARN generated from the stack
+    Value: !GetAtt s3BucketAccessPoint.Arn
