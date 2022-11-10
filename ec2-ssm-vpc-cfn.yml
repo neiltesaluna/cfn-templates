@@ -1,0 +1,127 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "This stack is to generate an EC2 instance where it's accessible using SSM"
+Parameters:
+  AvailabilityZone:
+    Type: String
+    Default: ap-southeast-2a
+
+Resources:
+
+# Creating own VPC, subnet and internet gateway for this stack
+  ec2CfnInternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  AttachVpctoGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !GetAtt ec2CfnVPC.VpcId
+      InternetGatewayId: !GetAtt ec2CfnInternetGateway.InternetGatewayId
+
+  ec2CfnVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: 'true'
+      EnableDnsHostnames: 'true'
+
+  ec2CfnSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:  !Ref ec2CfnVPC
+      CidrBlock: 10.0.0.0/24
+      MapPublicIpOnLaunch: 'true'
+      AvailabilityZone: !Ref AvailabilityZone
+
+  # Some route tables for our subnets:
+  ec2PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref ec2CfnVPC
+
+  ec2PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachVpctoGateway
+    Properties:
+      RouteTableId: !Ref ec2PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref ec2CfnInternetGateway
+
+  ec2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref ec2CfnSubnet
+      RouteTableId: !Ref ec2PublicRouteTable
+
+# creating ssm access role and security groups for ec2 instance
+  ec2SSMRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore # AmazonSSMManagedInstanceCore
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy # CloudWatchAgentServerPolicy
+  
+  ec2SSMInstanceProfile:
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      Path: /
+      Roles:
+        - !Ref ec2SSMRole
+
+  containerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub ${AWS::StackName}-sg
+      GroupDescription: Security group for ec2-instance
+      VpcId: !Ref ec2CfnVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8000
+          ToPort: 8000
+          CidrIp: 0.0.0.0/0
+
+# ec2 instance creation
+  ec2CfnInstance:
+    Type: AWS::EC2::Instance
+    Properties: 
+      InstanceType: t2.micro
+      ImageId: ami-09a5c873bc79530d9 # ubuntu server 22.04 LTS (64-bit x86)
+      InstanceInitiatedShutdownBehavior: terminate
+      SubnetId: !Ref ec2CfnSubnet
+      SecurityGroupIds:
+        - !GetAtt containerSecurityGroup.GroupId
+      IamInstanceProfile: !Ref ec2SSMInstanceProfile
+
+Outputs:
+  ec2InstanceId:
+    Description: EC2 Instance ID generated from this stack
+    Value: !Ref ec2CfnInstance
+
+  ec2InstanceDNS:
+    Description: EC2 Instance DNS generated from this stack
+    Value: !GetAtt ec2CfnInstance.PublicDnsName
+
+  ec2InstancePublicIP:
+    Description: EC2 Instance Public IP generated from this stack
+    Value: !GetAtt ec2CfnInstance.PublicIp
+
+  ec2VPCId:
+    Description: VPC Id generated from this stack
+    Value: !GetAtt ec2CfnVPC.VpcId
+
+  ec2SubnetId:
+    Description: Subnet Id generated from this stack
+    Value: !GetAtt ec2CfnSubnet.SubnetId
+
+  ssmawsclicommand:
+    Description: The launch command for awscli using aws ssm
+    Value: !Join ['', ['aws ssm start-session --target ', !Ref ec2CfnInstance]]
