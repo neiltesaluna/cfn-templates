@@ -1,3 +1,5 @@
+# this is a python script to test if the lambda function is working correctly using boto3 > python tutorial_print.py
+# We have hard coded the bucket name, object lambda access point arn and the 'Key' which is the file in the bucket (tutorial.txt)
 import boto3
 from botocore.config import Config
 
@@ -9,17 +11,12 @@ def getObject(bucket, key):
     print("\n")
 
 print('Original object from the S3 bucket:')
-# Replace the two input parameters of getObject() below with 
-# the S3 bucket name that you created in Step 1 and 
-# the name of the file that you uploaded to the S3 bucket in Step 2
-getObject("s3-access-stack-cfn-bucket", 
+# substitute s3-bucket-name with bucket name upon resource creation from (s3-access-point.yml) stack, (tutorial.txt) is the file to be uploaded into the bucket
+getObject("s3-bucket-name", 
           "tutorial.txt")
 
 print('Object transformed by S3 Object Lambda:')
-# Replace the two input parameters of getObject() below with 
-# the ARN of your S3 Object Lambda access point that you saved earlier and
-# the name of the file with the transformed data (which in this case is
-# the same as the name of the file that you uploaded to the S3 bucket 
-# in Step 2)
-getObject("arn:aws:s3-object-lambda:ap-southeast-2:283243887691:accesspoint/lambda-stack-cfn-object-lambda-access-point",
+
+# substitute object-lambda-access-point-arn with the Object Lambda Access Point Arn upon resource creation from (object-lambda.yml) stack
+getObject("object-lambda-access-point-arn",
           "tutorial.txt")   

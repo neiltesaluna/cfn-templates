@@ -32,9 +32,6 @@ Resources:
       Name: !Sub "${AWS::StackName}-cfn-s3-access-point"
   
 Outputs:
-  s3BucketArn:
-    Description: The Bucket ARN generated from the stack
-    Value: !GetAtt s3Bucket.Arn
-  accessPointArn:
+  s3AccessPointArn:
     Description: The access point ARN generated from the stack
     Value: !GetAtt s3BucketAccessPoint.Arn
