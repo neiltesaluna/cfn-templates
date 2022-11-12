@@ -1,0 +1,61 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "This stack generates the resources for an ECS fargate stack"
+Parameters:
+  EcrRepoUri:  
+    Description: Ecr Repo Uri from ecr-cfn-stack
+    Type: String
+  
+  ImageTag:
+    Decription: Image tag required from EcrRepoUri for the Fargate container, example 'latest'
+    Type: String
+
+  ContainerPort:
+    Description: The container port used by the application on our ImageTag, example '8000'
+    Type: String
+
+Resources:
+  EcsCluster:
+    Type: 'AWS::ECS::Cluster'
+    Properties:
+      ClusterName: !Sub '${AWS::StackName}-fargate-cluster'
+      CapacityProviders:
+        - FARGATE
+  
+  EcsService: 
+    Type: AWS::ECS::Service
+    Properties: 
+      Cluster: 
+        Ref: "EcsCluster"
+      DesiredCount: 1
+      TaskDefinition: 
+        Ref: "EcsTaskDefinition"
+  
+  EcsTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      NetworkMode: awsvpc
+      ExecutionRoleArn: !Ref ecsTaskExecutionRole
+      ContainerDefinitions: 
+        - Name: !Sub ${AWS::StackName}-container
+          Image: !Join ['', [!Ref EcrRepoUri, ':', !Ref ImageTag]]
+          Cpu: 256
+          Memory: 512
+          LogConfiguration: 
+            LogDriver: awslogs
+          PortMappings: 
+            containerPort: !Ref ContainerPort
+
+  ecsTaskExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy # AmazonECSTaskExecutionRolePolicy
