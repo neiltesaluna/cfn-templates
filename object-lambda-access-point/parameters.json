@@ -1,3 +1,3 @@
 [
-  "s3BucketAccessPoint=arn:aws:s3:ap-southeast-2:283243887691:accesspoint/s3-access-stack-cfn-s3-access-point"
+  "s3BucketAccessPoint="
 ]
