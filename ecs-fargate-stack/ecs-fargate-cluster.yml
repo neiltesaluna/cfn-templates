@@ -17,6 +17,10 @@ Parameters:
     Description: Secret key for the application
     Type: String
 
+  SubnetId:
+    Description: Subnet Id for the EcsService resource, we can either reference an existing aws subnet on
+    Type: String
+
 Resources:
   EcsCluster:
     Type: 'AWS::ECS::Cluster'
@@ -29,13 +33,18 @@ Resources:
     Type: AWS::ECS::Service
     Properties: 
       Cluster: 
-        Ref: "EcsCluster"
+        !Ref EcsCluster
       DesiredCount: 1
-      AwsVpcConfiguration:
-        Subnets:
-          - # subnet id
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED # required to be ENABLED if subnet is public
+          Subnets:
+            - !Ref SubnetId
+          SecurityGroups:
+            - !GetAtt ContainerSecurityGroup.GroupId
       TaskDefinition: 
-        Ref: "EcsTaskDefinition"
+        !Ref EcsTaskDefinition
   
   EcsTaskDefinition:
     Type: AWS::ECS::TaskDefinition
@@ -52,9 +61,8 @@ Resources:
           LogConfiguration: 
             LogDriver: awslogs
             Options:
-              awslogs-group: !Sub ${AWS::StackName}-container
+              awslogs-group: !Ref ContainerLogGroup
               awslogs-region: !Ref AWS::Region
-              awslogs-create-group: 'true'
               awslogs-stream-prefix: !Ref AWS::StackName
           PortMappings: 
             - ContainerPort: !Ref ContainerPort
@@ -62,8 +70,25 @@ Resources:
             - Name: 'DJANGO_SECRET_KEY'
               Value: !Ref AppEnvSecret
 
+  ContainerLogGroup: 
+    Type: AWS::Logs::LogGroup
+    Properties: 
+      LogGroupName: !Sub ${AWS::StackName}-logs
+      RetentionInDays: 3
+
+  ContainerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub ${AWS::StackName}-sg
+      GroupDescription: !Sub "Security group for ${AWS::StackName} cloudformation stack"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8000
+          ToPort: 8000
+          CidrIp: 0.0.0.0/0
+
   ecsTaskExecutionRole:
-    Type: 'AWS::IAM::Role'
+    Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
@@ -76,3 +101,12 @@ Resources:
               - 'sts:AssumeRole'
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy # AmazonECSTaskExecutionRolePolicy
+      # Policies:  # required if 'true' for awslogs-create-group under LogConfiguration/Options
+      #   - PolicyName: awslogs 
+      #     PolicyDocument:
+      #       Version: "2012-10-17"
+      #       Statement:
+      #         - Effect: Allow
+      #           Action:
+      #             - logs:CreateLogGroup 
+      #           Resource: "*"
