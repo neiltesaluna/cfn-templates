@@ -1,0 +1,56 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "This stack is to generate an EC2 instance where it's accessible using SSM"
+Parameters:
+  AvailabilityZone:
+    Type: String
+    Default: ap-southeast-2a
+
+Resources:
+# Creating own VPC, subnet and internet gateway for this stack
+  ec2CfnInternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  AttachVpctoGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !GetAtt ec2CfnVPC.VpcId
+      InternetGatewayId: !GetAtt ec2CfnInternetGateway.InternetGatewayId
+
+  ec2CfnVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: 'true'
+      EnableDnsHostnames: 'true'
+
+  ec2CfnSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:  !Ref ec2CfnVPC
+      CidrBlock: 10.0.0.0/24
+      MapPublicIpOnLaunch: 'true'
+      AvailabilityZone: !Ref AvailabilityZone
+
+  # Some route tables for our subnets:
+  ec2PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref ec2CfnVPC
+
+  ec2PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachVpctoGateway
+    Properties:
+      RouteTableId: !Ref ec2PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref ec2CfnInternetGateway
+
+  ec2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref ec2CfnSubnet
+      RouteTableId: !Ref ec2PublicRouteTable
+
+Outputs:
+  ec2CfnSubnet:
+    Value: !GetAtt ec2CfnSubnet.SubnetId
