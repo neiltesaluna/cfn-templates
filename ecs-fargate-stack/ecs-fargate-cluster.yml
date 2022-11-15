@@ -96,8 +96,6 @@ Resources:
       TargetType: ip
       Protocol: TCP
       Port: 8000
-      # Targets:
-      # - Id: 10.0.0.0/16
 
   ContainerLogGroup: 
     Type: AWS::Logs::LogGroup
