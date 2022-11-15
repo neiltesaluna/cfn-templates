@@ -11,19 +11,23 @@ Parameters:
 
   ContainerPort:
     Description: The container port used by the application on our ImageTag, example '8000'
-    Type: String
+    Type: Number
 
   AppEnvSecret:
     Description: Secret key for the application
     Type: String
 
   SubnetId:
-    Description: Subnet Id for the EcsService resource, we can either reference an existing aws subnet on
+    Description: Subnet Id for the EcsService and Loadbalancer resource, we can either reference an existing aws subnet
+    Type: String
+
+  VpcId:
+    Description: Vpc Id for the ip load balancer target group
     Type: String
 
 Resources:
   EcsCluster:
-    Type: 'AWS::ECS::Cluster'
+    Type: AWS::ECS::Cluster
     Properties:
       ClusterName: !Sub '${AWS::StackName}-fargate-cluster'
       CapacityProviders:
@@ -36,6 +40,10 @@ Resources:
         !Ref EcsCluster
       DesiredCount: 1
       LaunchType: FARGATE
+      LoadBalancers:
+        - ContainerName: !Sub ${AWS::StackName}-container 
+          ContainerPort: !Ref ContainerPort
+          TargetGroupArn: !Ref ElbTargetGroup
       NetworkConfiguration:
         AwsvpcConfiguration:
           AssignPublicIp: ENABLED # required to be ENABLED if subnet is public
@@ -69,6 +77,27 @@ Resources:
           Environment:
             - Name: 'DJANGO_SECRET_KEY'
               Value: !Ref AppEnvSecret
+
+  # LoadBalancer:
+  #   Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+  #   Properties:
+  #     Name: !Sub ${AWS::StackName}-loadbalancer
+  #     Type: network
+  #     Scheme: internet-facing
+  #     Subnets:
+  #       - !Ref SubnetId
+
+  ElbTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckEnabled: true
+      Name: !Sub ${AWS::StackName}-lb-tg
+      VpcId: !Ref VpcId
+      TargetType: ip
+      Protocol: TCP
+      Port: 8000
+      # Targets:
+      # - Id: 10.0.0.0/16
 
   ContainerLogGroup: 
     Type: AWS::Logs::LogGroup

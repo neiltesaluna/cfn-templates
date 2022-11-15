@@ -2,6 +2,7 @@
   "EcrRepoUri=",
   "ImageSha=",
   "SubnetId=",
+  "VpcId=",
   "ContainerPort=8000",
   "AppEnvSecret=llxtrraeGxpPhdk-EMF8I7G-t66CM7XHPzoNhrYVooFhLpr6Zr8HZQ"
 ]

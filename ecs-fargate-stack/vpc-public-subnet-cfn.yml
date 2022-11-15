@@ -52,5 +52,7 @@ Resources:
       RouteTableId: !Ref ec2PublicRouteTable
 
 Outputs:
-  ec2CfnSubnet:
+  ec2CfnSubnetId:
     Value: !GetAtt ec2CfnSubnet.SubnetId
+  ec2CfnVpcId:
+    Value: !GetAtt ec2CfnSubnet.VpcId
