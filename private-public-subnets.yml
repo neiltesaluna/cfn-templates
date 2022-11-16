@@ -1,0 +1,103 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "This stack is to generate an EC2 instance where it's accessible using SSM"
+Parameters:
+  AvailabilityZone:
+    Type: String
+    Default: ap-southeast-2a
+
+Resources:
+# Creating own VPC, subnet and internet gateway for this stack
+  ec2CfnInternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  AttachVpctoGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !GetAtt ec2CfnVPC.VpcId
+      InternetGatewayId: !GetAtt ec2CfnInternetGateway.InternetGatewayId
+
+  ec2CfnVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: 'true'
+      EnableDnsHostnames: 'true'
+
+  ec2CfnPublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:  !Ref ec2CfnVPC
+      CidrBlock: 10.0.1.0/24
+      MapPublicIpOnLaunch: 'true'
+      AvailabilityZone: !Ref AvailabilityZone
+
+  ec2CfnPrivateSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:  !Ref ec2CfnVPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Ref AvailabilityZone
+
+  # Route tables for our public subnet:
+  ec2PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref ec2CfnVPC
+
+  ec2PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachVpctoGateway
+    Properties:
+      RouteTableId: !Ref ec2PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref ec2CfnInternetGateway
+
+  ec2PublicRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref ec2CfnPublicSubnet
+      RouteTableId: !Ref ec2PublicRouteTable
+
+  # Route tables and NAT Gateway for our private subnet
+  ec2PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref ec2CfnVPC
+
+  ec2PrivateRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachVpctoGateway
+    Properties:
+      RouteTableId: !Ref ec2PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGateway
+
+  ec2PrivateRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref ec2CfnPrivateSubnet
+      RouteTableId: !Ref ec2PrivateRouteTable
+
+  NATGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+        AllocationId: !GetAtt NATGatewayEIP.AllocationId # A public NAT gateway uses an elastic IP address to provide it with a public IP address that doesn't change. This is supplied by an Elastic IP address
+        SubnetId: !Ref ec2CfnPublicSubnet
+
+  NATGatewayEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+        Domain: vpc
+
+
+Outputs:
+  PublicSubnetId:
+    Value: !GetAtt ec2CfnPublicSubnet.SubnetId
+  PublicVpcId:
+    Value: !GetAtt ec2CfnPublicSubnet.VpcId
+  PrivateSubnetId:
+    Value: !GetAtt ec2CfnPrivateSubnet.SubnetId
+  PrivateVpcId:
+    Value: !GetAtt ec2CfnPrivateSubnet.VpcId
+
+  
