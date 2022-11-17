@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: "This stack generates the resources for an ECS fargate stack"
+Description: "This stack generates the resources for an ECS fargate stack with a Network Load Balancer on a public network."
 Parameters:
   EcrRepoUri:  
     Description: Ecr Repo Uri from ecr-cfn-stack
@@ -17,13 +17,17 @@ Parameters:
     Description: Secret key for the application
     Type: String
 
-  SubnetId:
-    Description: Subnet Id for the EcsService and Loadbalancer resource, we can either reference an existing aws subnet
-    Type: String
+  SubnetId1:
+    Description: Subnet 1 Id for the EcsService and Loadbalancer resource, we can either reference an existing aws subnet
+    Type: AWS::EC2::Subnet::Id
+
+  SubnetId2:
+    Description: Subnet 2 Id for the Loadbalancer resource, for application load balancers, we need two subnets
+    Type: AWS::EC2::Subnet::Id
 
   VpcId:
     Description: Vpc Id for the ip load balancer target group
-    Type: String
+    Type: AWS::EC2::VPC::Id
 
 Resources:
   EcsCluster:
@@ -35,6 +39,7 @@ Resources:
   
   EcsService: 
     Type: AWS::ECS::Service
+    DependsOn: ElbListener
     Properties: 
       Cluster: 
         !Ref EcsCluster
@@ -48,7 +53,8 @@ Resources:
         AwsvpcConfiguration:
           AssignPublicIp: ENABLED # required to be ENABLED if subnet is public
           Subnets:
-            - !Ref SubnetId
+            - !Ref SubnetId1
+            - !Ref SubnetId2
           SecurityGroups:
             - !GetAtt ContainerSecurityGroup.GroupId
       TaskDefinition: 
@@ -78,14 +84,28 @@ Resources:
             - Name: 'DJANGO_SECRET_KEY'
               Value: !Ref AppEnvSecret
 
-  # LoadBalancer:
-  #   Type: AWS::ElasticLoadBalancingV2::LoadBalancer
-  #   Properties:
-  #     Name: !Sub ${AWS::StackName}-loadbalancer
-  #     Type: network
-  #     Scheme: internet-facing
-  #     Subnets:
-  #       - !Ref SubnetId
+  # Setting up the application load balancer for EcsService.
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub ${AWS::StackName}-loadbalancer
+      Type: application
+      Scheme: internet-facing
+      SecurityGroups:
+        - !GetAtt LoadBalancerSecurityGroup.GroupId
+      Subnets: # referencing the public subnet, application load balancers need two subnets
+        - !Ref SubnetId1
+        - !Ref SubnetId2
+
+  ElbListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties: 
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ElbTargetGroup
+      LoadBalancerArn: !Ref LoadBalancer
 
   ElbTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
@@ -93,8 +113,11 @@ Resources:
       HealthCheckEnabled: true
       Name: !Sub ${AWS::StackName}-lb-tg
       VpcId: !Ref VpcId
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 30
+      Protocol: HTTP
       TargetType: ip
-      Protocol: TCP
       Port: 8000
 
   ContainerLogGroup: 
@@ -103,15 +126,29 @@ Resources:
       LogGroupName: !Sub ${AWS::StackName}-logs
       RetentionInDays: 3
 
+  # Creating security groups for ecs container and load balancer
   ContainerSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupName: !Sub ${AWS::StackName}-sg
-      GroupDescription: !Sub "Security group for ${AWS::StackName} cloudformation stack"
+      GroupName: !Sub ${AWS::StackName}-container-sg
+      GroupDescription: !Sub "Security group for ${AWS::StackName} ecs container cloudformation stack"
+      VpcId: !Ref VpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 8000
           ToPort: 8000
+          SourceSecurityGroupId: !GetAtt LoadBalancerSecurityGroup.GroupId
+  
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub ${AWS::StackName}-loadbalancer-sg
+      GroupDescription: !Sub "Security group for ${AWS::StackName} load balancer cloudformation stack"
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
           CidrIp: 0.0.0.0/0
 
   ecsTaskExecutionRole:
@@ -137,3 +174,8 @@ Resources:
       #           Action:
       #             - logs:CreateLogGroup 
       #           Resource: "*"
+
+Outputs:
+  LoadBalancerDNS:
+    Description: The DNS name for the load balancer where we can use to visit the website
+    Value: !GetAtt LoadBalancer.DNSName
