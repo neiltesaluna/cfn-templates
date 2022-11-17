@@ -6,7 +6,7 @@ Parameters:
     Default: ap-southeast-2a
 
 Resources:
-# Creating own VPC, subnet and internet gateway for this stack
+# Creating own VPC, subnets and internet gateway for this stack
   ec2CfnInternetGateway:
     Type: AWS::EC2::InternetGateway
 
@@ -23,36 +23,67 @@ Resources:
       EnableDnsSupport: 'true'
       EnableDnsHostnames: 'true'
 
-  ec2CfnSubnet:
+  ec2CfnPublicSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId:  !Ref ec2CfnVPC
-      CidrBlock: 10.0.0.0/24
+      CidrBlock: 10.0.1.0/24
       MapPublicIpOnLaunch: 'true'
-      AvailabilityZone: !Ref AvailabilityZone
+      AvailabilityZone: !Select [ 0, Fn::GetAZs: !Ref 'AWS::Region']
+  
+  ec2CfnPublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:  !Ref ec2CfnVPC
+      CidrBlock: 10.0.2.0/24
+      MapPublicIpOnLaunch: 'true'
+      AvailabilityZone: !Select [ 1, Fn::GetAZs: !Ref 'AWS::Region']
 
   # Some route tables for our subnets:
-  ec2PublicRouteTable:
+  # Public Subnet 1
+  ec2PublicRouteTable1:
     Type: AWS::EC2::RouteTable
     Properties:
       VpcId: !Ref ec2CfnVPC
 
-  ec2PublicRoute:
+  ec2PublicRoute1:
     Type: AWS::EC2::Route
     DependsOn: AttachVpctoGateway
     Properties:
-      RouteTableId: !Ref ec2PublicRouteTable
+      RouteTableId: !Ref ec2PublicRouteTable1
       DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref ec2CfnInternetGateway
 
-  ec2RouteTableAssociation:
+  ec2RouteTableAssociation1:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
-      SubnetId: !Ref ec2CfnSubnet
-      RouteTableId: !Ref ec2PublicRouteTable
+      SubnetId: !Ref ec2CfnPublicSubnet1
+      RouteTableId: !Ref ec2PublicRouteTable1
+
+  # Public Subnet 2
+  ec2PublicRouteTable2:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref ec2CfnVPC
+
+  ec2PublicRoute2:
+    Type: AWS::EC2::Route
+    DependsOn: AttachVpctoGateway
+    Properties:
+      RouteTableId: !Ref ec2PublicRouteTable2
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref ec2CfnInternetGateway
+
+  ec2RouteTableAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref ec2CfnPublicSubnet2
+      RouteTableId: !Ref ec2PublicRouteTable2
 
 Outputs:
-  ec2CfnSubnetId:
-    Value: !GetAtt ec2CfnSubnet.SubnetId
+  ec2CfnPublicSubnet1Id:
+    Value: !GetAtt ec2CfnPublicSubnet1.SubnetId
+  ec2CfnPublicSubnet2Id:
+    Value: !GetAtt ec2CfnPublicSubnet2.SubnetId
   ec2CfnVpcId:
-    Value: !GetAtt ec2CfnSubnet.VpcId
+    Value: !GetAtt ec2CfnVPC.VpcId
