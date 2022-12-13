@@ -1,0 +1,66 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "This stack is to generate a MySQL database instance"
+Parameters:
+  SubnetId1:
+    Description: Subnet 1 Id for EC2 ASG and Loadbalancer resource, we can either reference an existing aws subnet
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-0d8b7c79c168639a9
+
+  SubnetId2:
+    Description: Subnet 2 Id for the Loadbalancer resource, for application load balancers, we need two subnets
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-0e80b983f84febe4f
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC Id for the stack
+    Default: vpc-000387cf04ba71caf
+  
+  DBMasterUsername:
+    Type: String
+    Description: Username for the DB instance
+    Default: dbrootuser
+  
+  DBMasterPassword:
+    Type: String
+    Description: User password for the DB instance
+    Default: dbrootpassword
+
+Resources:
+  RdsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub ${AWS::StackName}-rds-sg
+      GroupDescription: Security group for rds instance
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306 
+          ToPort: 3306
+          CidrIp: 0.0.0.0/0
+
+# creating RDS for ec2 instance and subnet group to run rds on same vpc
+  mySqlRds:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      VPCSecurityGroups:
+      - Ref: RdsSecurityGroup
+      DBSubnetGroupName: !Ref mySqlRdsSubnetGroup
+      AllocatedStorage: '5'
+      DBInstanceClass: db.t2.micro
+      Engine: MySQL
+      MasterUsername: !Ref DBMasterUsername
+      MasterUserPassword: !Ref DBMasterPassword
+
+  mySqlRdsSubnetGroup: 
+    Type: AWS::RDS::DBSubnetGroup
+    Properties: 
+      DBSubnetGroupDescription: Subnet group for Rds instance 
+      SubnetIds: 
+        - !Ref SubnetId1
+        - !Ref SubnetId2
+
+Outputs:
+  RdsEndpoint:
+    Description: The Endpoint name for the RDS instance
+    Value: !GetAtt mySqlRds.Endpoint.Address
